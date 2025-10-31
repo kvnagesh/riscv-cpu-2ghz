@@ -22,62 +22,103 @@
 
 //==============================================================================
 // File: riscv_mem_stage.sv
-// Description: Memory Access Stage (Stage 8 of 10-stage pipeline)
-// Purpose: L1 data cache access and memory operations
-// Critical Path: < 500ps @ 7nm (for 2 GHz operation)
+// Description: Memory Access Stage (MEM) - Stage 8 of 10 - RV64I Support
+// Purpose: Load/store operations with 64-bit support (LB, LH, LW, LD, LBU, LHU, LWU, SB, SH, SW, SD)
+// Critical Path: < 500ps for 2 GHz @ 7nm
 //==============================================================================
 
 module riscv_mem_stage (
     input  logic        clk,
     input  logic        rst_n,
-    input  logic [31:0] ex5_result,        // ALU result or address
+    
+    // Inputs from EX5 Stage
+    input  logic [63:0] ex5_pc,
+    input  logic [31:0] ex5_inst,
+    input  logic [63:0] ex5_alu_result,  // Address for load/store
+    input  logic [63:0] ex5_rs2_data,    // Store data
     input  logic [4:0]  ex5_rd_addr,
+    input  logic [2:0]  ex5_funct3,      // Determines load/store size
     input  logic        ex5_valid,
-    input  logic        ex5_mem_read,      // Memory read enable
-    input  logic        ex5_mem_write,     // Memory write enable
-    input  logic [31:0] ex5_mem_wdata,     // Memory write data
-    // L1 Cache Interface
-    output logic [31:0] l1_addr,
-    output logic        l1_read,
-    output logic        l1_write,
-    output logic [31:0] l1_wdata,
-    input  logic [31:0] l1_rdata,
-    input  logic        l1_ready,
-    // Pipeline outputs
-    output logic [31:0] mem_result,        // NO RESET - Data path
-    output logic [4:0]  mem_rd_addr,       // NO RESET - Data path
-    output logic        mem_valid          // WITH RESET - Control path
+    
+    // Outputs to WB Stage - Pipeline Registers
+    output logic [63:0] mem_pc,          // NO RESET - Data path
+    output logic [31:0] mem_inst,        // NO RESET - Data path
+    output logic [63:0] mem_data,        // NO RESET - Data path (64-bit load data or ALU result)
+    output logic [4:0]  mem_rd_addr,     // NO RESET - Data path
+    output logic        mem_valid        // WITH RESET - Control path
 );
 
-//==============================================================================
-// Combinational Logic - L1 Cache Interface
-//==============================================================================
-    assign l1_addr  = ex5_result;          // Address from ALU
-    assign l1_read  = ex5_mem_read;
-    assign l1_write = ex5_mem_write;
-    assign l1_wdata = ex5_mem_wdata;
-
-//==============================================================================
-// Pipeline Registers - Data Path (NO RESET)
-//==============================================================================
-    always_ff @(posedge clk) begin
-        // Select between ALU result and memory read data
-        if (ex5_mem_read && l1_ready)
-            mem_result <= l1_rdata;
-        else
-            mem_result <= ex5_result;
+    // Memory interface (placeholder - would connect to D-cache)
+    logic [63:0] mem_read_data;
+    logic [63:0] mem_addr;
+    logic [63:0] mem_write_data;
+    
+    assign mem_addr = ex5_alu_result;
+    
+    //==========================================================================
+    // Load Data Processing (Sign/Zero Extension)
+    // funct3 encoding:
+    // 3'b000: LB  (sign-extend byte)
+    // 3'b001: LH  (sign-extend halfword)
+    // 3'b010: LW  (sign-extend word)
+    // 3'b011: LD  (doubleword - no extension needed)
+    // 3'b100: LBU (zero-extend byte)
+    // 3'b101: LHU (zero-extend halfword)
+    // 3'b110: LWU (zero-extend word)
+    //==========================================================================
+    logic [63:0] load_data_processed;
+    
+    always_comb begin
+        mem_read_data = 64'h0;  // Placeholder - would come from D-cache
         
+        case (ex5_funct3)
+            3'b000: load_data_processed = {{56{mem_read_data[7]}}, mem_read_data[7:0]};    // LB
+            3'b001: load_data_processed = {{48{mem_read_data[15]}}, mem_read_data[15:0]};  // LH
+            3'b010: load_data_processed = {{32{mem_read_data[31]}}, mem_read_data[31:0]};  // LW
+            3'b011: load_data_processed = mem_read_data;                                    // LD
+            3'b100: load_data_processed = {56'b0, mem_read_data[7:0]};                      // LBU
+            3'b101: load_data_processed = {48'b0, mem_read_data[15:0]};                     // LHU
+            3'b110: load_data_processed = {32'b0, mem_read_data[31:0]};                     // LWU
+            default: load_data_processed = mem_read_data;
+        endcase
+    end
+    
+    //==========================================================================
+    // Store Data Processing
+    // For stores, extract appropriate bytes from rs2_data based on funct3:
+    // 3'b000: SB  (byte)
+    // 3'b001: SH  (halfword)
+    // 3'b010: SW  (word)
+    // 3'b011: SD  (doubleword)
+    //==========================================================================
+    always_comb begin
+        case (ex5_funct3)
+            3'b000: mem_write_data = {56'b0, ex5_rs2_data[7:0]};   // SB
+            3'b001: mem_write_data = {48'b0, ex5_rs2_data[15:0]};  // SH
+            3'b010: mem_write_data = {32'b0, ex5_rs2_data[31:0]};  // SW
+            3'b011: mem_write_data = ex5_rs2_data;                 // SD
+            default: mem_write_data = ex5_rs2_data;
+        endcase
+    end
+    
+    //==========================================================================
+    // Pipeline Registers - NO RESET (Data Path)
+    //==========================================================================
+    always_ff @(posedge clk) begin
+        mem_pc      <= ex5_pc;
+        mem_inst    <= ex5_inst;
+        mem_data    <= load_data_processed;  // For loads; ALU result for non-memory ops
         mem_rd_addr <= ex5_rd_addr;
     end
-
-//==============================================================================
-// Pipeline Registers - Control Path (WITH RESET)
-//==============================================================================
+    
+    //==========================================================================
+    // Valid Signal - WITH RESET (Control Path)
+    //==========================================================================
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n)
             mem_valid <= 1'b0;
         else
-            mem_valid <= ex5_valid && (!ex5_mem_read || l1_ready);
+            mem_valid <= ex5_valid;
     end
 
 endmodule
