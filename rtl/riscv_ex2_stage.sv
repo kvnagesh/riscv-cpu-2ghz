@@ -22,8 +22,8 @@
 
 //==============================================================================
 // File: riscv_ex2_stage.sv
-// Description: Execute Stage 2 (EX2) - Stage 4 of 10
-// Purpose: ALU operation start (cycle 1 of 3-stage ALU)
+// Description: Execute Stage 2 (EX2) - Stage 4 of 10 - RV64I Support
+// Purpose: ALU computation stage 1 (64-bit operations)
 // Critical Path: < 500ps for 2 GHz @ 7nm
 //==============================================================================
 
@@ -32,58 +32,57 @@ module riscv_ex2_stage (
     input  logic        rst_n,
     
     // Inputs from EX1 Stage
-    input  logic [31:0] ex1_rs1_data,
-    input  logic [31:0] ex1_rs2_data,
-    input  logic [31:0] ex1_imm,
+    input  logic [63:0] ex1_pc,
+    input  logic [31:0] ex1_inst,
+    input  logic [63:0] ex1_rs1_data,
+    input  logic [63:0] ex1_rs2_data,
+    input  logic [63:0] ex1_imm,
     input  logic [4:0]  ex1_rd_addr,
-    input  logic [3:0]  ex1_alu_op,
+    input  logic [5:0]  ex1_alu_op,
+    input  logic [2:0]  ex1_funct3,
+    input  logic        ex1_is_32bit,
     input  logic        ex1_valid,
     
     // Outputs to EX3 Stage - Pipeline Registers
-    output logic [31:0] ex2_alu_in1,       // NO RESET - Data path
-    output logic [31:0] ex2_alu_in2,       // NO RESET - Data path
-    output logic [4:0]  ex2_rd_addr,       // NO RESET - Data path
-    output logic [3:0]  ex2_alu_op,        // NO RESET - Data path
-    output logic [31:0] ex2_alu_partial,   // NO RESET - Data path
-    output logic        ex2_valid          // WITH RESET - Control path
+    output logic [63:0] ex2_pc,        // NO RESET - Data path
+    output logic [31:0] ex2_inst,      // NO RESET - Data path
+    output logic [63:0] ex2_alu_result, // NO RESET - Data path (64-bit)
+    output logic [63:0] ex2_rs2_data,  // NO RESET - Data path (64-bit)
+    output logic [4:0]  ex2_rd_addr,   // NO RESET - Data path
+    output logic [2:0]  ex2_funct3,    // NO RESET - Data path
+    output logic        ex2_valid      // WITH RESET - Control path
 );
 
-    //==========================================================================
-    // ALU Input Selection (Combinational)
-    //==========================================================================
-    logic [31:0] alu_in1_comb;
-    logic [31:0] alu_in2_comb;
-    
-    // Select between register and immediate
-    assign alu_in1_comb = ex1_rs1_data;
-    assign alu_in2_comb = (ex1_alu_op[3]) ? ex1_imm : ex1_rs2_data;
+    // ALU interface (64-bit)
+    logic [63:0] alu_result;
+    logic        alu_zero;
+    logic        alu_negative;
+    logic        branch_taken;
     
     //==========================================================================
-    // ALU Partial Computation - Stage 1 of 3
-    // Simple operations that can start immediately
+    // ALU Instantiation (64-bit operations)
     //==========================================================================
-    logic [31:0] alu_partial_result;
-    
-    always_comb begin
-        case (ex1_alu_op[2:0])
-            3'h0: alu_partial_result = alu_in1_comb + alu_in2_comb;  // ADD partial
-            3'h1: alu_partial_result = alu_in1_comb - alu_in2_comb;  // SUB partial
-            3'h2: alu_partial_result = alu_in1_comb & alu_in2_comb;  // AND
-            3'h3: alu_partial_result = alu_in1_comb | alu_in2_comb;  // OR
-            3'h4: alu_partial_result = alu_in1_comb ^ alu_in2_comb;  // XOR
-            default: alu_partial_result = alu_in1_comb;              // Pass through
-        endcase
-    end
+    riscv_alu alu_inst (
+        .operand_a(ex1_rs1_data),
+        .operand_b(ex1_imm),       // Or rs2_data depending on instruction type
+        .alu_op(ex1_alu_op),
+        .is_32bit(ex1_is_32bit),
+        .result(alu_result),
+        .zero(alu_zero),
+        .negative(alu_negative),
+        .branch_taken(branch_taken)
+    );
     
     //==========================================================================
     // Pipeline Registers - NO RESET (Data Path)
     //==========================================================================
     always_ff @(posedge clk) begin
-        ex2_alu_in1     <= alu_in1_comb;
-        ex2_alu_in2     <= alu_in2_comb;
-        ex2_rd_addr     <= ex1_rd_addr;
-        ex2_alu_op      <= ex1_alu_op;
-        ex2_alu_partial <= alu_partial_result;
+        ex2_pc         <= ex1_pc;
+        ex2_inst       <= ex1_inst;
+        ex2_alu_result <= alu_result;
+        ex2_rs2_data   <= ex1_rs2_data;
+        ex2_rd_addr    <= ex1_rd_addr;
+        ex2_funct3     <= ex1_funct3;
     end
     
     //==========================================================================
