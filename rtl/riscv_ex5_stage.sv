@@ -22,33 +22,49 @@
 
 //==============================================================================
 // File: riscv_ex5_stage.sv
-// Description: Execute Stage 5 (Stage 7 of 10-stage pipeline)
-// Purpose: Result forwarding and bypass network preparation
-// Critical Path: < 500ps @ 7nm (for 2 GHz operation)
+// Description: Execute Stage 5 (EX5) - Stage 7 of 10 - RV64I Support
+// Purpose: Final ALU stage before memory access (64-bit)
+// Critical Path: < 500ps for 2 GHz @ 7nm
 //==============================================================================
 
 module riscv_ex5_stage (
     input  logic        clk,
     input  logic        rst_n,
-    input  logic [31:0] ex4_alu_result,    // NO RESET - Data path
-    input  logic [4:0]  ex4_rd_addr,       // NO RESET - Data path
+    
+    // Inputs from EX4 Stage
+    input  logic [63:0] ex4_pc,
+    input  logic [31:0] ex4_inst,
+    input  logic [63:0] ex4_alu_result,
+    input  logic [63:0] ex4_rs2_data,
+    input  logic [4:0]  ex4_rd_addr,
+    input  logic [2:0]  ex4_funct3,
     input  logic        ex4_valid,
-    output logic [31:0] ex5_result,        // NO RESET - Data path
-    output logic [4:0]  ex5_rd_addr,       // NO RESET - Data path
-    output logic        ex5_valid          // WITH RESET - Control path
+    
+    // Outputs to MEM Stage - Pipeline Registers
+    output logic [63:0] ex5_pc,         // NO RESET - Data path
+    output logic [31:0] ex5_inst,       // NO RESET - Data path
+    output logic [63:0] ex5_alu_result, // NO RESET - Data path (64-bit)
+    output logic [63:0] ex5_rs2_data,   // NO RESET - Data path (64-bit)
+    output logic [4:0]  ex5_rd_addr,    // NO RESET - Data path
+    output logic [2:0]  ex5_funct3,     // NO RESET - Data path
+    output logic        ex5_valid       // WITH RESET - Control path
 );
 
-//==============================================================================
-// Pipeline Registers - Data Path (NO RESET)
-//==============================================================================
+    //==========================================================================
+    // Pipeline Registers - NO RESET (Data Path)
+    //==========================================================================
     always_ff @(posedge clk) begin
-        ex5_result  <= ex4_alu_result;
-        ex5_rd_addr <= ex4_rd_addr;
+        ex5_pc         <= ex4_pc;
+        ex5_inst       <= ex4_inst;
+        ex5_alu_result <= ex4_alu_result;
+        ex5_rs2_data   <= ex4_rs2_data;
+        ex5_rd_addr    <= ex4_rd_addr;
+        ex5_funct3     <= ex4_funct3;
     end
-
-//==============================================================================
-// Pipeline Registers - Control Path (WITH RESET)
-//==============================================================================
+    
+    //==========================================================================
+    // Valid Signal - WITH RESET (Control Path)
+    //==========================================================================
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n)
             ex5_valid <= 1'b0;
