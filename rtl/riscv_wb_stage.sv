@@ -22,33 +22,48 @@
 
 //==============================================================================
 // File: riscv_wb_stage.sv
-// Description: Write Back Stage (Stage 9 of 10-stage pipeline)
-// Purpose: Prepare data for register file write
-// Critical Path: < 500ps @ 7nm (for 2 GHz operation)
+// Description: Write Back Stage (WB) - Stage 9 of 10 - RV64I Support
+// Purpose: Write result back to register file (64-bit)
+// Critical Path: < 500ps for 2 GHz @ 7nm
 //==============================================================================
 
 module riscv_wb_stage (
     input  logic        clk,
     input  logic        rst_n,
-    input  logic [31:0] mem_result,        // Result from memory stage
-    input  logic [4:0]  mem_rd_addr,       // Destination register
+    
+    // Inputs from MEM Stage
+    input  logic [63:0] mem_pc,
+    input  logic [31:0] mem_inst,
+    input  logic [63:0] mem_data,      // 64-bit data to write back
+    input  logic [4:0]  mem_rd_addr,
     input  logic        mem_valid,
-    output logic [31:0] wb_data,           // NO RESET - Data path
-    output logic [4:0]  wb_rd_addr,        // NO RESET - Data path
-    output logic        wb_valid           // WITH RESET - Control path
+    
+    // Outputs to COM Stage - Pipeline Registers
+    output logic [63:0] wb_pc,         // NO RESET - Data path
+    output logic [31:0] wb_inst,       // NO RESET - Data path
+    output logic [63:0] wb_data,       // NO RESET - Data path (64-bit)
+    output logic [4:0]  wb_rd_addr,    // NO RESET - Data path
+    output logic        wb_wr_en,      // NO RESET - Data path
+    output logic        wb_valid       // WITH RESET - Control path
 );
-
-//==============================================================================
-// Pipeline Registers - Data Path (NO RESET)
-//==============================================================================
+Extend riscv_wb_stage.sv to support full RV64I instruction set    // Write enable generation (simple version - always write if valid and rd != x0)
+    logic wr_en;
+    assign wr_en = mem_valid && (mem_rd_addr != 5'b0);
+    
+    //==========================================================================
+    // Pipeline Registers - NO RESET (Data Path)
+    //==========================================================================
     always_ff @(posedge clk) begin
-        wb_data    <= mem_result;
+        wb_pc      <= mem_pc;
+        wb_inst    <= mem_inst;
+        wb_data    <= mem_data;
         wb_rd_addr <= mem_rd_addr;
+        wb_wr_en   <= wr_en;
     end
-
-//==============================================================================
-// Pipeline Registers - Control Path (WITH RESET)
-//==============================================================================
+    
+    //==========================================================================
+    // Valid Signal - WITH RESET (Control Path)
+    //==========================================================================
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n)
             wb_valid <= 1'b0;
