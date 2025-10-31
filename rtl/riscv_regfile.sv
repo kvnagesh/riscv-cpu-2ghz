@@ -22,64 +22,53 @@
 
 //==============================================================================
 // File: riscv_regfile.sv
-// Description: 32-Register File with 2 Read Ports and 1 Write Port
-// Purpose: High-speed register file with forwarding support
-// Critical Path: < 500ps @ 7nm (for 2 GHz operation)
+// Description: 64-bit Register File with 2 Read Ports and 1 Write Port - RV64I
+// Purpose: 32 general-purpose 64-bit registers (x0-x31) with x0 hardwired to 0
+// Critical Path: < 500ps for 2 GHz @ 7nm
 //==============================================================================
 
 module riscv_regfile (
     input  logic        clk,
     input  logic        rst_n,
+    
     // Read Port 1
     input  logic [4:0]  rs1_addr,
-    output logic [31:0] rs1_data,          // NO RESET - Data path
+    output logic [63:0] rs1_data,      // 64-bit read data
+    
     // Read Port 2
     input  logic [4:0]  rs2_addr,
-    output logic [31:0] rs2_data,          // NO RESET - Data path
+    output logic [63:0] rs2_data,      // 64-bit read data
+    
     // Write Port
     input  logic [4:0]  rd_addr,
-    input  logic [31:0] rd_data,
-    input  logic        wen                // Write enable
+    input  logic [63:0] rd_data,       // 64-bit write data
+    input  logic        wr_en
 );
 
-//==============================================================================
-// Register Array (NO RESET - Data path)
-//==============================================================================
-    // 32 registers: x0-x31
+    // 32 x 64-bit registers
+    logic [63:0] registers [0:31];
+    
+    //==========================================================================
+    // Combinational Read (Asynchronous Read)
     // x0 is hardwired to 0
-    logic [31:0] registers [1:31];         // x1-x31 (x0 not stored)
-
-//==============================================================================
-// Write Operation
-//==============================================================================
-    always_ff @(posedge clk) begin
-        if (wen && (rd_addr != 5'd0)) begin
+    //==========================================================================
+    assign rs1_data = (rs1_addr == 5'b0) ? 64'h0 : registers[rs1_addr];
+    assign rs2_data = (rs2_addr == 5'b0) ? 64'h0 : registers[rs2_addr];
+    
+    //==========================================================================
+    // Sequential Write (Synchronous Write)
+    // x0 is read-only (writes to x0 are ignored)
+    //==========================================================================
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            // Reset all registers to 0
+            for (int i = 0; i < 32; i++) begin
+                registers[i] <= 64'h0;
+            end
+        end else if (wr_en && (rd_addr != 5'b0)) begin
+            // Write to register (except x0)
             registers[rd_addr] <= rd_data;
         end
-    end
-
-//==============================================================================
-// Read Port 1 - Combinational with Forwarding
-//==============================================================================
-    always_comb begin
-        if (rs1_addr == 5'd0)
-            rs1_data = 32'd0;              // x0 always reads 0
-        else if (wen && (rs1_addr == rd_addr))
-            rs1_data = rd_data;            // Forwarding from write port
-        else
-            rs1_data = registers[rs1_addr];
-    end
-
-//==============================================================================
-// Read Port 2 - Combinational with Forwarding
-//==============================================================================
-    always_comb begin
-        if (rs2_addr == 5'd0)
-            rs2_data = 32'd0;              // x0 always reads 0
-        else if (wen && (rs2_addr == rd_addr))
-            rs2_data = rd_data;            // Forwarding from write port
-        else
-            rs2_data = registers[rs2_addr];
     end
 
 endmodule
