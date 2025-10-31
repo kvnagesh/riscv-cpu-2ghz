@@ -22,8 +22,8 @@
 
 //==============================================================================
 // File: riscv_ex1_stage.sv
-// Description: Execute Stage 1 (EX1) - Stage 3 of 10
-// Purpose: Address calculation, register file read, operand selection
+// Description: Execute Stage 1 (EX1) - Stage 3 of 10 - RV64I Support
+// Purpose: Register file read, operand selection (64-bit data path)
 // Critical Path: < 500ps for 2 GHz @ 7nm
 //==============================================================================
 
@@ -32,46 +32,55 @@ module riscv_ex1_stage (
     input  logic        rst_n,
     
     // Inputs from ID Stage
-    input  logic [31:0] id_pc,
+    input  logic [63:0] id_pc,
+    input  logic [31:0] id_inst,
     input  logic [4:0]  id_rs1_addr,
     input  logic [4:0]  id_rs2_addr,
     input  logic [4:0]  id_rd_addr,
-    input  logic [31:0] id_imm,
-    input  logic [3:0]  id_alu_op,
+    input  logic [63:0] id_imm,       // 64-bit immediate
+    input  logic [5:0]  id_alu_op,
+    input  logic [2:0]  id_funct3,
+    input  logic        id_is_32bit,
     input  logic        id_valid,
     
-    // Register File Interface
-    output logic [4:0]  rf_rs1_addr,
-    output logic [4:0]  rf_rs2_addr,
-    input  logic [31:0] rf_rs1_data,
-    input  logic [31:0] rf_rs2_data,
+    // Register file interface (64-bit)
+    output logic [4:0]  rs1_addr,
+    input  logic [63:0] rs1_data,
+    output logic [4:0]  rs2_addr,
+    input  logic [63:0] rs2_data,
     
     // Outputs to EX2 Stage - Pipeline Registers
-    output logic [31:0] ex1_pc,            // NO RESET - Data path
-    output logic [31:0] ex1_rs1_data,      // NO RESET - Data path
-    output logic [31:0] ex1_rs2_data,      // NO RESET - Data path
-    output logic [31:0] ex1_imm,           // NO RESET - Data path
-    output logic [4:0]  ex1_rd_addr,       // NO RESET - Data path
-    output logic [3:0]  ex1_alu_op,        // NO RESET - Data path
-    output logic        ex1_valid          // WITH RESET - Control path
+    output logic [63:0] ex1_pc,        // NO RESET - Data path
+    output logic [31:0] ex1_inst,      // NO RESET - Data path
+    output logic [63:0] ex1_rs1_data,  // NO RESET - Data path (64-bit)
+    output logic [63:0] ex1_rs2_data,  // NO RESET - Data path (64-bit)
+    output logic [63:0] ex1_imm,       // NO RESET - Data path (64-bit)
+    output logic [4:0]  ex1_rd_addr,   // NO RESET - Data path
+    output logic [5:0]  ex1_alu_op,    // NO RESET - Data path
+    output logic [2:0]  ex1_funct3,    // NO RESET - Data path
+    output logic        ex1_is_32bit,  // NO RESET - Data path
+    output logic        ex1_valid      // WITH RESET - Control path
 );
 
     //==========================================================================
     // Register File Address Assignment (Combinational)
     //==========================================================================
-    assign rf_rs1_addr = id_rs1_addr;
-    assign rf_rs2_addr = id_rs2_addr;
+    assign rs1_addr = id_rs1_addr;
+    assign rs2_addr = id_rs2_addr;
     
     //==========================================================================
     // Pipeline Registers - NO RESET (Data Path)
     //==========================================================================
     always_ff @(posedge clk) begin
         ex1_pc       <= id_pc;
-        ex1_rs1_data <= rf_rs1_data;
-        ex1_rs2_data <= rf_rs2_data;
+        ex1_inst     <= id_inst;
+        ex1_rs1_data <= rs1_data;
+        ex1_rs2_data <= rs2_data;
         ex1_imm      <= id_imm;
         ex1_rd_addr  <= id_rd_addr;
         ex1_alu_op   <= id_alu_op;
+        ex1_funct3   <= id_funct3;
+        ex1_is_32bit <= id_is_32bit;
     end
     
     //==========================================================================
