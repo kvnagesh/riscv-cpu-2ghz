@@ -22,8 +22,8 @@
 
 //==============================================================================
 // File: riscv_ex3_stage.sv
-// Description: Execute Stage 3 (EX3) - Stage 5 of 10
-// Purpose: ALU operation continue (cycle 2 of 3-stage ALU)
+// Description: Execute Stage 3 (EX3) - Stage 5 of 10 - RV64I Support
+// Purpose: ALU computation stage 2, data forwarding (64-bit)
 // Critical Path: < 500ps for 2 GHz @ 7nm
 //==============================================================================
 
@@ -32,48 +32,34 @@ module riscv_ex3_stage (
     input  logic        rst_n,
     
     // Inputs from EX2 Stage
-    input  logic [31:0] ex2_alu_partial,
+    input  logic [63:0] ex2_pc,
+    input  logic [31:0] ex2_inst,
+    input  logic [63:0] ex2_alu_result,
+    input  logic [63:0] ex2_rs2_data,
     input  logic [4:0]  ex2_rd_addr,
-    input  logic [3:0]  ex2_alu_op,
+    input  logic [2:0]  ex2_funct3,
     input  logic        ex2_valid,
     
     // Outputs to EX4 Stage - Pipeline Registers
-    output logic [31:0] ex3_alu_result,    // NO RESET - Data path
-    output logic [4:0]  ex3_rd_addr,       // NO RESET - Data path
-    output logic        ex3_valid          // WITH RESET - Control path
+    output logic [63:0] ex3_pc,         // NO RESET - Data path
+    output logic [31:0] ex3_inst,       // NO RESET - Data path
+    output logic [63:0] ex3_alu_result, // NO RESET - Data path (64-bit)
+    output logic [63:0] ex3_rs2_data,   // NO RESET - Data path (64-bit)
+    output logic [4:0]  ex3_rd_addr,    // NO RESET - Data path
+    output logic [2:0]  ex3_funct3,     // NO RESET - Data path
+    output logic        ex3_valid       // WITH RESET - Control path
 );
 
-    //==========================================================================
-    // ALU Computation - Stage 2 of 3
-    // Continue complex operations (shifts, etc.)
-    //==========================================================================
-    logic [31:0] alu_result_comb;
-    
-    always_comb begin
-        case (ex2_alu_op[2:0])
-            3'h0, 3'h1, 3'h2, 3'h3, 3'h4: begin
-                // Simple ops completed in EX2, pass through
-                alu_result_comb = ex2_alu_partial;
-            end
-            3'h5: begin  // SLL - shift left logical (continue)
-                alu_result_comb = ex2_alu_partial;  // Simplified
-            end
-            3'h6: begin  // SRL - shift right logical
-                alu_result_comb = ex2_alu_partial;  // Simplified
-            end
-            3'h7: begin  // SRA - shift right arithmetic
-                alu_result_comb = ex2_alu_partial;  // Simplified
-            end
-            default: alu_result_comb = ex2_alu_partial;
-        endcase
-    end
-    
     //==========================================================================
     // Pipeline Registers - NO RESET (Data Path)
     //==========================================================================
     always_ff @(posedge clk) begin
-        ex3_alu_result <= alu_result_comb;
+        ex3_pc         <= ex2_pc;
+        ex3_inst       <= ex2_inst;
+        ex3_alu_result <= ex2_alu_result;
+        ex3_rs2_data   <= ex2_rs2_data;
         ex3_rd_addr    <= ex2_rd_addr;
+        ex3_funct3     <= ex2_funct3;
     end
     
     //==========================================================================
